@@ -181,15 +181,6 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
     
-    # Buton özelleştirme (emoji + etiket)
-    c.execute('''CREATE TABLE IF NOT EXISTS button_config (
-        button_key TEXT PRIMARY KEY,
-        emoji TEXT,
-        label TEXT,
-        updated_by INTEGER,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-
     # İlk kurulumda seed listesiyle doldur (tablo boşsa)
     c.execute('SELECT COUNT(*) FROM required_channels')
     if c.fetchone()[0] == 0:
@@ -676,68 +667,6 @@ def quick_bot_keyboard(bot_name):
     return kb
 
 
-# ================================
-# BUTON ÖZELLEŞTİRME (emoji + etiket)
-# ================================
-# key -> (varsayılan emoji, varsayılan etiket, callback_data)
-CUSTOMIZABLE_BUTTONS = {
-    'btn_bots':     ('📂', 'Botlarım',  'menu_bots'),
-    'btn_upload':   ('📤', 'Bot Yükle', 'menu_upload'),
-    'btn_start':    ('🚀', 'Başlat',    'menu_start'),
-    'btn_stop':     ('⏸️', 'Durdur',    'menu_stop'),
-    'btn_restart':  ('🔄', 'Yeniden',   'menu_restart'),
-    'btn_delete':   ('🗑️', 'Sil',       'menu_delete'),
-    'btn_logs':     ('📋', 'Loglar',    'menu_logs'),
-    'btn_share':    ('🤝', 'Paylaş',    'menu_share'),
-    'btn_premium':  ('💎', 'Premium',   'menu_premium'),
-    'btn_stats':    ('📊', 'Stats',     'menu_stats'),
-    'btn_support':  ('🎫', 'Destek',    'menu_support'),
-    'btn_settings': ('⚙️', 'Ayarlar',   'menu_settings'),
-}
-
-def get_button_cfg(key):
-    """DB'de özelleştirme varsa onu, yoksa varsayılanı döner: (emoji, label)."""
-    default_emoji, default_label, _ = CUSTOMIZABLE_BUTTONS[key]
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('SELECT emoji, label FROM button_config WHERE button_key=?', (key,))
-        r = c.fetchone()
-        conn.close()
-        if r:
-            return (r[0] or default_emoji, r[1] or default_label)
-    except Exception:
-        pass
-    return (default_emoji, default_label)
-
-def set_button_cfg(key, emoji, label, admin_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO button_config (button_key, emoji, label, updated_by, updated_at)
-                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                 ON CONFLICT(button_key) DO UPDATE SET
-                    emoji=excluded.emoji, label=excluded.label,
-                    updated_by=excluded.updated_by, updated_at=CURRENT_TIMESTAMP''',
-              (key, emoji, label, admin_id))
-    conn.commit()
-    conn.close()
-
-def reset_button_cfg(key):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('DELETE FROM button_config WHERE button_key=?', (key,))
-    conn.commit()
-    conn.close()
-
-def button_custom_keyboard():
-    k = types.InlineKeyboardMarkup(row_width=1)
-    for key in CUSTOMIZABLE_BUTTONS:
-        emoji, label = get_button_cfg(key)
-        k.add(types.InlineKeyboardButton(f"{emoji} {label}", callback_data=f"btncfg_{key}"))
-    k.add(types.InlineKeyboardButton("♻️ TÜMÜNÜ SIFIRLA", callback_data="btncfg_reset_all", style="danger"))
-    k.add(types.InlineKeyboardButton("🔙 GERİ", callback_data="menu_admin"))
-    return k
-
 def admin_panel_keyboard():
     k = types.InlineKeyboardMarkup(row_width=2)
     k.add(
@@ -768,7 +697,6 @@ def admin_panel_keyboard():
         types.InlineKeyboardButton("🗑️ ZORUNLU KANAL SİL", callback_data="admin_del_channel", style="danger"),
         types.InlineKeyboardButton("🧹 TÜM ZORUNLU KANALLARI SİL", callback_data="admin_del_all_channels", style="danger"),
         types.InlineKeyboardButton("⚙️ AYARLAR", callback_data="admin_settings", style="primary"),
-        types.InlineKeyboardButton("🎨 BUTON ÖZELLEŞTİR", callback_data="admin_button_custom", style="success"),
         types.InlineKeyboardButton("❓ YARDIM", callback_data="admin_help", style="primary"),
         types.InlineKeyboardButton("🔙 KULLANICI PANELİ", callback_data="admin_to_user", style="danger")
     )
@@ -782,21 +710,38 @@ def channel_keyboard():
     return k
 
 
-def _cbtn(key):
-    """Özelleştirilmiş emoji/etiketle InlineKeyboardButton üretir."""
-    emoji, label = get_button_cfg(key)
-    _, _, callback = CUSTOMIZABLE_BUTTONS[key]
-    return types.InlineKeyboardButton(f"{emoji} {label}", callback_data=callback)
-
 def inline_main_menu(user_id):
     kb = types.InlineKeyboardMarkup(row_width=2)
-
-    kb.add(_cbtn('btn_bots'), _cbtn('btn_upload'))
-    kb.add(_cbtn('btn_start'), _cbtn('btn_stop'))
-    kb.add(_cbtn('btn_restart'), _cbtn('btn_delete'))
-    kb.add(_cbtn('btn_logs'), _cbtn('btn_share'))
-    kb.add(_cbtn('btn_premium'), _cbtn('btn_stats'))
-    kb.add(_cbtn('btn_support'), _cbtn('btn_settings'))
+    
+    kb.add(
+        types.InlineKeyboardButton("📂 Botlarım", callback_data="menu_bots", style="primary"),
+        types.InlineKeyboardButton("📤 Bot Yükle", callback_data="menu_upload", style="success")
+    )
+    
+    kb.add(
+        types.InlineKeyboardButton("🚀 Başlat", callback_data="menu_start", style="primary"),
+        types.InlineKeyboardButton("⏸️ Durdur", callback_data="menu_stop", style="primary")
+    )
+    
+    kb.add(
+        types.InlineKeyboardButton("🔄 Yeniden", callback_data="menu_restart", style="success"),
+        types.InlineKeyboardButton("🗑️ Sil", callback_data="menu_delete", style="danger")
+    )
+    
+    kb.add(
+        types.InlineKeyboardButton("📋 Loglar", callback_data="menu_logs", style="danger"),
+        types.InlineKeyboardButton("🤝 Paylaş", callback_data="menu_share", style="success")
+    )
+    
+    kb.add(
+        types.InlineKeyboardButton("💎 Premium", callback_data="menu_premium", style="success"),
+        types.InlineKeyboardButton("📊 Stats", callback_data="menu_stats", style="danger")
+    )
+    
+    kb.add(
+        types.InlineKeyboardButton("🎫 Destek", callback_data="menu_support", style="success"),
+        types.InlineKeyboardButton("⚙️ Ayarlar", callback_data="menu_settings", style="primary")
+    )
 
     if user_id in admin_ids:
         kb.add(types.InlineKeyboardButton("👑 Admin Panel", callback_data="menu_admin", style="danger"))
@@ -1990,52 +1935,6 @@ def callback(call):
         show_main_menu(call.message)
         bot.answer_callback_query(call.id)
 
-    elif data == "admin_button_custom":
-        bot.edit_message_text(
-            "🎨 BUTON ÖZELLEŞTİR\n\nAna menüdeki hangi butonu değiştirmek istersin?\n\n"
-            "ℹ️ Not: Telegram'ın Bot API'si buton rengini değiştirmeye izin vermiyor "
-            "(inline butonlar hep aynı gri Telegram teması ile gösterilir) ve buton "
-            "yazısının içine premium/özel emoji koymayı desteklemiyor — bu platform "
-            "kısıtı, kodda düzeltilebilecek bir şey değil. Değiştirebildiğimiz: buton "
-            "üzerindeki normal emoji ve yazı.",
-            call.message.chat.id, call.message.message_id, reply_markup=button_custom_keyboard()
-        )
-        bot.answer_callback_query(call.id)
-
-    elif data == "btncfg_reset_all":
-        for key in CUSTOMIZABLE_BUTTONS:
-            reset_button_cfg(key)
-        bot.edit_message_text("♻️ Tüm butonlar varsayılana döndürüldü.", call.message.chat.id, call.message.message_id,
-                               reply_markup=button_custom_keyboard())
-        bot.answer_callback_query(call.id)
-        log_admin(u_id, 'reset_all_buttons', 'all', '')
-
-    elif data.startswith("btncfg_"):
-        key = data[len("btncfg_"):]
-        if key not in CUSTOMIZABLE_BUTTONS:
-            bot.answer_callback_query(call.id, "❌ Geçersiz buton!")
-        else:
-            emoji, label = get_button_cfg(key)
-            k = types.InlineKeyboardMarkup(row_width=1)
-            k.add(types.InlineKeyboardButton("♻️ VARSAYILANA DÖNDÜR", callback_data=f"btncfgreset_{key}", style="danger"))
-            k.add(types.InlineKeyboardButton("🔙 GERİ", callback_data="admin_button_custom"))
-            bot.edit_message_text(
-                f"🎨 Şu an: {emoji} {label}\n\n"
-                f"Yeni değeri şu formatta gönder:\nEmoji | Yazı\n\nÖrnek:\n🌟 | Botlarım",
-                call.message.chat.id, call.message.message_id, reply_markup=k
-            )
-            user_sessions[u_id] = {'action': 'admin_button_edit', 'key': key}
-            bot.answer_callback_query(call.id)
-
-    elif data.startswith("btncfgreset_"):
-        key = data[len("btncfgreset_"):]
-        if key in CUSTOMIZABLE_BUTTONS:
-            reset_button_cfg(key)
-            log_admin(u_id, 'reset_button', key, '')
-        bot.edit_message_text("✅ Buton varsayılana döndürüldü.", call.message.chat.id, call.message.message_id,
-                               reply_markup=button_custom_keyboard())
-        bot.answer_callback_query(call.id)
-
 # ================================
 # ADMIN STATE İŞLEMLERİ
 # ================================
@@ -2169,22 +2068,6 @@ def handle_admin_state(m):
                 log_admin(u_id, 'add_required_channel', name, url)
         except Exception:
             bot.send_message(u_id, "❌ Hatalı format! Kullanım: İsim | https://t.me/kanal | Emoji(opsiyonel)")
-        del user_sessions[u_id]
-
-    elif action == 'admin_button_edit':
-        key = sess.get('key')
-        try:
-            parts = [p.strip() for p in m.text.split('|', 1)]
-            if len(parts) != 2 or not parts[0] or not parts[1]:
-                raise ValueError("format")
-            emoji, label = parts[0], parts[1]
-            if key not in CUSTOMIZABLE_BUTTONS:
-                raise ValueError("key")
-            set_button_cfg(key, emoji, label, u_id)
-            bot.send_message(u_id, f"✅ Buton güncellendi: {emoji} {label}", reply_markup=button_custom_keyboard())
-            log_admin(u_id, 'edit_button', key, f"{emoji} {label}")
-        except Exception:
-            bot.send_message(u_id, "❌ Hatalı format! Kullanım: Emoji | Yazı\nÖrnek: 🌟 | Botlarım")
         del user_sessions[u_id]
 
 # ================================
